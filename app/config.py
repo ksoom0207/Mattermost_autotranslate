@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    # LiteLLM Proxy Configuration (Optional - for custom LiteLLM proxy server)
+    LITELLM_API_BASE: Optional[str] = None  # e.g., "http://localhost:4000" or "https://your-litellm-proxy.com"
+    LITELLM_API_KEY: Optional[str] = None   # API key for your LiteLLM proxy server
+
     # AI Model Configuration
     AI_MODEL: str = "gpt-4o-mini"  # Default model: gpt-4o-mini, claude-3-5-sonnet-20241022, etc.
     AI_TEMPERATURE: float = 0.3
@@ -48,7 +52,11 @@ class Settings(BaseSettings):
 
     def validate_api_keys(self) -> bool:
         """Validate that at least one AI API key is configured"""
-        return bool(self.OPENAI_API_KEY or self.ANTHROPIC_API_KEY)
+        return bool(
+            self.OPENAI_API_KEY or
+            self.ANTHROPIC_API_KEY or
+            self.LITELLM_API_BASE  # LiteLLM proxy server configured
+        )
 
 
 # Global settings instance

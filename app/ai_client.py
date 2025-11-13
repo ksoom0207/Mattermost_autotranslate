@@ -27,11 +27,27 @@ class AITranslationClient:
         self.max_tokens = settings.AI_MAX_TOKENS
         self.timeout = settings.AI_TIMEOUT
 
-        # Set API keys
-        if settings.OPENAI_API_KEY:
-            litellm.openai_key = settings.OPENAI_API_KEY
-        if settings.ANTHROPIC_API_KEY:
-            litellm.anthropic_key = settings.ANTHROPIC_API_KEY
+        # Configure LiteLLM API Base (for custom proxy server)
+        if settings.LITELLM_API_BASE:
+            litellm.api_base = settings.LITELLM_API_BASE
+            logger.info(f"Using LiteLLM proxy at: {settings.LITELLM_API_BASE}")
+
+            # Set custom API key for LiteLLM proxy if provided
+            if settings.LITELLM_API_KEY:
+                # For custom proxy, use the appropriate key based on model prefix
+                if self.model.startswith("openai/") or self.model.startswith("gpt"):
+                    litellm.openai_key = settings.LITELLM_API_KEY
+                elif self.model.startswith("anthropic/") or self.model.startswith("claude"):
+                    litellm.anthropic_key = settings.LITELLM_API_KEY
+                else:
+                    # Generic API key for custom models
+                    litellm.api_key = settings.LITELLM_API_KEY
+        else:
+            # Set API keys for direct provider access
+            if settings.OPENAI_API_KEY:
+                litellm.openai_key = settings.OPENAI_API_KEY
+            if settings.ANTHROPIC_API_KEY:
+                litellm.anthropic_key = settings.ANTHROPIC_API_KEY
 
         logger.info(f"AI Translation Client initialized with model: {self.model}")
 

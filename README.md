@@ -6,11 +6,12 @@ Mattermost에서 메시지를 입력하면 자동으로 AI가 번역하여 채�
 
 ## 주요 기능
 
-- 🤖 **AI 기반 자동 번역**: OpenAI GPT 또는 Anthropic Claude를 사용한 고품질 번역
+- 🤖 **AI 기반 자동 번역**: OpenAI GPT, Anthropic Claude, 또는 LiteLLM Proxy를 통한 고품질 번역
 - 🌐 **양방향 번역**: 한국어 ↔ 영어 자동 감지 및 번역
 - 🔄 **다국어 지원**: 기타 언어는 한국어와 영어로 동시 번역
 - 📝 **포맷 보존**: Markdown 형식 유지
 - 🚫 **Bot 필터링**: 무한 루프 방지를 위한 Bot 메시지 자동 필터링
+- 🔌 **유연한 AI 연동**: 직접 API 호출 또는 LiteLLM Proxy 서버 연동 지원
 - 🐳 **Docker 지원**: 간편한 배포 및 운영
 - ⚡ **Production-Ready**: 에러 처리, 로깅, 타임아웃 설정 포함
 
@@ -22,7 +23,8 @@ Mattermost Channel
 Outgoing Webhook
       ↓
 FastAPI Translation Server
-      ├─→ AI Model (OpenAI/Claude)
+      ├─→ Direct API: OpenAI/Anthropic Claude
+      ├─→ OR LiteLLM Proxy Server
       └─→ Translation
             ↓
       Incoming Webhook
@@ -54,7 +56,10 @@ Mattermost_autotranslate/
 
 - Python 3.10 이상 (로컬 실행 시)
 - Docker 및 Docker Compose (Docker 실행 시)
-- OpenAI API Key 또는 Anthropic API Key
+- **다음 중 하나:**
+  - OpenAI API Key
+  - Anthropic API Key
+  - LiteLLM Proxy 서버 접근 권한
 - Mattermost Server 접근 권한
 
 ## 설치 및 실행
@@ -78,6 +83,7 @@ nano .env
 
 **필수 설정 항목:**
 
+**옵션 1: OpenAI/Anthropic 직접 연동**
 ```env
 # AI API Key (둘 중 하나 이상 필수)
 OPENAI_API_KEY=sk-your-openai-api-key
@@ -88,6 +94,25 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key
 AI_MODEL=gpt-4o-mini
 # 또는
 # AI_MODEL=claude-3-5-sonnet-20241022
+
+# Mattermost Incoming Webhook URL (필수)
+MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
+```
+
+**옵션 2: LiteLLM Proxy 서버 연동**
+```env
+# LiteLLM Proxy 서버 URL
+LITELLM_API_BASE=http://localhost:4000
+# 또는
+# LITELLM_API_BASE=https://your-litellm-proxy.com
+
+# LiteLLM Proxy API Key (필요한 경우)
+LITELLM_API_KEY=sk-your-litellm-proxy-key
+
+# 프록시에 설정된 모델명 사용
+AI_MODEL=gpt-4o-mini
+# 또는 프록시에서 설정한 커스텀 모델명
+# AI_MODEL=my-custom-model
 
 # Mattermost Incoming Webhook URL (필수)
 MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
@@ -236,6 +261,8 @@ Please review the pull request when you have time.
 |--------|------|--------|------|
 | `OPENAI_API_KEY` | 선택* | - | OpenAI API 키 |
 | `ANTHROPIC_API_KEY` | 선택* | - | Anthropic API 키 |
+| `LITELLM_API_BASE` | 선택* | - | LiteLLM Proxy 서버 URL |
+| `LITELLM_API_KEY` | 아니오 | - | LiteLLM Proxy API 키 |
 | `AI_MODEL` | 아니오 | `gpt-4o-mini` | 사용할 AI 모델 |
 | `AI_TEMPERATURE` | 아니오 | `0.3` | AI 생성 온도 (0.0-2.0) |
 | `AI_MAX_TOKENS` | 아니오 | `2000` | 최대 토큰 수 |
@@ -248,21 +275,50 @@ Please review the pull request when you have time.
 | `SERVER_PORT` | 아니오 | `8000` | 서버 포트 |
 | `LOG_LEVEL` | 아니오 | `INFO` | 로그 레벨 |
 
-**\* API 키는 OpenAI 또는 Anthropic 둘 중 하나 이상 필수**
+**\* API 키는 OpenAI, Anthropic, 또는 LiteLLM Proxy 중 하나 이상 필수**
 
 ## 지원 AI 모델
 
-### OpenAI Models
+### OpenAI Models (직접 API 사용 시)
 - `gpt-4o` - 최신 GPT-4 Optimized
 - `gpt-4o-mini` - 경제적인 GPT-4 (권장)
 - `gpt-4-turbo` - GPT-4 Turbo
 - `gpt-3.5-turbo` - GPT-3.5
 
-### Anthropic Claude Models
+### Anthropic Claude Models (직접 API 사용 시)
 - `claude-3-5-sonnet-20241022` - Claude 3.5 Sonnet (최신, 권장)
 - `claude-3-opus-20240229` - Claude 3 Opus (최고 성능)
 - `claude-3-sonnet-20240229` - Claude 3 Sonnet
 - `claude-3-haiku-20240307` - Claude 3 Haiku (빠름)
+
+### LiteLLM Proxy 사용 시
+LiteLLM Proxy를 사용하는 경우, 프록시 서버에 설정된 모델명을 그대로 사용합니다.
+
+**LiteLLM Proxy란?**
+- 여러 LLM 제공자를 통합 관리하는 프록시 서버
+- 로드 밸런싱, 캐싱, 비용 추적 등의 기능 제공
+- 자체 호스팅 가능
+
+**설정 예시:**
+```env
+LITELLM_API_BASE=http://localhost:4000
+LITELLM_API_KEY=your-proxy-key
+AI_MODEL=gpt-4o-mini  # 프록시에 설정된 모델명
+```
+
+**LiteLLM Proxy 시작하기:**
+```bash
+# LiteLLM 설치
+pip install litellm[proxy]
+
+# 프록시 서버 시작
+litellm --model gpt-4o-mini --port 4000
+
+# 또는 config.yaml 사용
+litellm --config config.yaml
+```
+
+자세한 내용은 [LiteLLM 공식 문서](https://docs.litellm.ai/docs/proxy/quick_start)를 참고하세요.
 
 ## 문제 해결
 
