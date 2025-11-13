@@ -10,16 +10,12 @@ import os
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
-    # API Keys
-    OPENAI_API_KEY: Optional[str] = None
-    ANTHROPIC_API_KEY: Optional[str] = None
-
-    # LiteLLM Proxy Configuration (Optional - for custom LiteLLM proxy server)
-    LITELLM_API_BASE: Optional[str] = None  # e.g., "http://localhost:4000" or "https://your-litellm-proxy.com"
-    LITELLM_API_KEY: Optional[str] = None   # API key for your LiteLLM proxy server
+    # LiteLLM Proxy Configuration
+    LITELLM_API_BASE: str = "http://localhost:4000"  # LiteLLM Proxy server URL
+    LITELLM_API_KEY: str = "dummy-key"  # API key for LiteLLM Proxy (can be dummy for local)
 
     # AI Model Configuration
-    AI_MODEL: str = "gpt-4o-mini"  # Default model: gpt-4o-mini, claude-3-5-sonnet-20241022, etc.
+    AI_MODEL: str = "translator-local"  # Model name configured in LiteLLM Proxy
     AI_TEMPERATURE: float = 0.3
     AI_MAX_TOKENS: int = 2000
     AI_TIMEOUT: int = 30  # seconds
@@ -51,12 +47,8 @@ class Settings(BaseSettings):
         return [username.strip() for username in self.IGNORED_USERNAMES.split(",") if username.strip()]
 
     def validate_api_keys(self) -> bool:
-        """Validate that at least one AI API key is configured"""
-        return bool(
-            self.OPENAI_API_KEY or
-            self.ANTHROPIC_API_KEY or
-            self.LITELLM_API_BASE  # LiteLLM proxy server configured
-        )
+        """Validate that LiteLLM Proxy is configured"""
+        return bool(self.LITELLM_API_BASE and self.LITELLM_API_KEY)
 
 
 # Global settings instance

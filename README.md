@@ -6,12 +6,12 @@ Mattermost에서 메시지를 입력하면 자동으로 AI가 번역하여 채�
 
 ## 주요 기능
 
-- 🤖 **AI 기반 자동 번역**: OpenAI GPT, Anthropic Claude, 또는 LiteLLM Proxy를 통한 고품질 번역
+- 🤖 **AI 기반 자동 번역**: LiteLLM Proxy를 통한 로컬/원격 AI 모델 사용
 - 🌐 **양방향 번역**: 한국어 ↔ 영어 자동 감지 및 번역
 - 🔄 **다국어 지원**: 기타 언어는 한국어와 영어로 동시 번역
 - 📝 **포맷 보존**: Markdown 형식 유지
 - 🚫 **Bot 필터링**: 무한 루프 방지를 위한 Bot 메시지 자동 필터링
-- 🔌 **유연한 AI 연동**: 직접 API 호출 또는 LiteLLM Proxy 서버 연동 지원
+- 🔌 **LiteLLM Proxy 연동**: OpenAI SDK v1을 사용한 표준 API 호출
 - 🐳 **Docker 지원**: 간편한 배포 및 운영
 - ⚡ **Production-Ready**: 에러 처리, 로깅, 타임아웃 설정 포함
 
@@ -23,12 +23,17 @@ Mattermost Channel
 Outgoing Webhook
       ↓
 FastAPI Translation Server
-      ├─→ Direct API: OpenAI/Anthropic Claude
-      ├─→ OR LiteLLM Proxy Server
-      └─→ Translation
-            ↓
-      Incoming Webhook
-            ↓
+      ↓
+OpenAI SDK v1 (client)
+      ↓
+LiteLLM Proxy (localhost:4000)
+      ↓
+AI Model (Local LLM, OpenAI, Claude, etc.)
+      ↓
+Translation Result
+      ↓
+Incoming Webhook
+      ↓
 Mattermost Channel (번역 결과)
 ```
 
@@ -41,7 +46,7 @@ Mattermost_autotranslate/
 │   ├── main.py                 # FastAPI 애플리케이션
 │   ├── config.py               # 환경 변수 및 설정
 │   ├── schemas.py              # Pydantic 데이터 모델
-│   ├── ai_client.py            # AI 번역 클라이언트 (litellm)
+│   ├── ai_client.py            # AI 번역 클라이언트 (OpenAI SDK)
 │   ├── mattermost_client.py    # Mattermost Webhook 클라이언트
 │   └── utils.py                # 유틸리티 함수
 ├── requirements.txt            # Python 의존성
@@ -56,24 +61,71 @@ Mattermost_autotranslate/
 
 - Python 3.10 이상 (로컬 실행 시)
 - Docker 및 Docker Compose (Docker 실행 시)
-- **다음 중 하나:**
-  - OpenAI API Key
-  - Anthropic API Key
-  - LiteLLM Proxy 서버 접근 권한
+- **LiteLLM Proxy 서버** (로컬 또는 원격)
 - Mattermost Server 접근 권한
 
-## 설치 및 실행
+## 빠른 시작
 
-### 1. 프로젝트 클론
+### 1. LiteLLM Proxy 서버 실행
+
+먼저 LiteLLM Proxy 서버를 실행해야 합니다.
+
+**옵션 A: 간단한 로컬 실행 (테스트용)**
 
 ```bash
-git clone <repository-url>
-cd Mattermost_autotranslate
+# LiteLLM 설치
+pip install litellm[proxy]
+
+# OpenAI 모델로 프록시 시작
+export OPENAI_API_KEY=sk-your-key
+litellm --model gpt-4o-mini --port 4000
+
+# 또는 Anthropic Claude
+export ANTHROPIC_API_KEY=sk-ant-your-key
+litellm --model claude-3-5-sonnet-20241022 --port 4000
 ```
 
-### 2. 환경 변수 설정
+**옵션 B: config.yaml 사용 (권장)**
+
+```yaml
+# config.yaml
+model_list:
+  - model_name: translator-local
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: translator-claude
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+general_settings:
+  master_key: dummy-key  # API key for proxy authentication
+```
 
 ```bash
+# config.yaml로 프록시 시작
+litellm --config config.yaml --port 4000
+```
+
+**옵션 C: Ollama 등 로컬 LLM 사용**
+
+```bash
+# Ollama 실행 (별도 터미널)
+ollama serve
+
+# LiteLLM을 Ollama에 연결
+litellm --model ollama/llama3.2 --port 4000
+```
+
+### 2. 프로젝트 설정
+
+```bash
+# 프로젝트 클론
+git clone <repository-url>
+cd Mattermost_autotranslate
+
 # .env 파일 생성
 cp .env.example .env
 
@@ -81,44 +133,23 @@ cp .env.example .env
 nano .env
 ```
 
-**필수 설정 항목:**
+**필수 설정 (.env):**
 
-**옵션 1: OpenAI/Anthropic 직접 연동**
 ```env
-# AI API Key (둘 중 하나 이상 필수)
-OPENAI_API_KEY=sk-your-openai-api-key
-# 또는
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key
-
-# AI 모델 선택
-AI_MODEL=gpt-4o-mini
-# 또는
-# AI_MODEL=claude-3-5-sonnet-20241022
-
-# Mattermost Incoming Webhook URL (필수)
-MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
-```
-
-**옵션 2: LiteLLM Proxy 서버 연동**
-```env
-# LiteLLM Proxy 서버 URL
+# LiteLLM Proxy 설정
 LITELLM_API_BASE=http://localhost:4000
-# 또는
-# LITELLM_API_BASE=https://your-litellm-proxy.com
+LITELLM_API_KEY=dummy-key
 
-# LiteLLM Proxy API Key (필요한 경우)
-LITELLM_API_KEY=sk-your-litellm-proxy-key
+# 모델명 (LiteLLM Proxy에 설정한 이름)
+AI_MODEL=translator-local
 
-# 프록시에 설정된 모델명 사용
-AI_MODEL=gpt-4o-mini
-# 또는 프록시에서 설정한 커스텀 모델명
-# AI_MODEL=my-custom-model
-
-# Mattermost Incoming Webhook URL (필수)
+# Mattermost Incoming Webhook URL (필수!)
 MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
 ```
 
-### 3-A. Docker로 실행 (권장)
+### 3. 번역 서버 실행
+
+**Docker로 실행 (권장):**
 
 ```bash
 # Docker Compose로 빌드 및 실행
@@ -131,7 +162,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### 3-B. 로컬에서 실행
+**로컬에서 실행:**
 
 ```bash
 # 가상환경 생성
@@ -147,9 +178,7 @@ python -m app.main
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 4. 서버 확인
-
-서버가 정상적으로 실행되었는지 확인:
+### 4. Health Check
 
 ```bash
 curl http://localhost:8000/health
@@ -168,54 +197,26 @@ curl http://localhost:8000/health
 
 ### 1. Incoming Webhook 생성
 
-1. Mattermost에 로그인
-2. **Main Menu** → **Integrations** → **Incoming Webhooks**
-3. **Add Incoming Webhook** 클릭
-4. 설정:
-   - **Title**: AI Translator Incoming Webhook
-   - **Description**: Receives translated messages
-   - **Channel**: 번역 결과를 받을 채널 선택
-5. **Save** 클릭
-6. 생성된 **Webhook URL** 복사 → `.env` 파일의 `MATTERMOST_INCOMING_WEBHOOK_URL`에 설정
+1. Mattermost → **Main Menu** → **Integrations** → **Incoming Webhooks**
+2. **Add Incoming Webhook** 클릭
+3. 채널 선택 후 생성
+4. **Webhook URL** 복사 → `.env`의 `MATTERMOST_INCOMING_WEBHOOK_URL`에 설정
 
 ### 2. Outgoing Webhook 생성
 
-1. Mattermost에 로그인
-2. **Main Menu** → **Integrations** → **Outgoing Webhooks**
-3. **Add Outgoing Webhook** 클릭
-4. 설정:
-   - **Title**: AI Translator Outgoing Webhook
-   - **Description**: Sends messages to translation service
+1. Mattermost → **Main Menu** → **Integrations** → **Outgoing Webhooks**
+2. **Add Outgoing Webhook** 클릭
+3. 설정:
    - **Content Type**: `application/x-www-form-urlencoded`
-   - **Channel**: 번역할 메시지를 감지할 채널 선택
-   - **Trigger Words**: (비워두면 모든 메시지 번역)
-     - 특정 단어로 트리거하려면 입력 (예: `translate`, `번역`)
-   - **Trigger When**:
-     - ✅ **First word matches a trigger word exactly**
-     - 또는 ✅ **First word starts with a trigger word** (선택사항)
-   - **Callback URLs**:
-     - `http://your-server-ip:8000/mattermost/translate`
-     - 예: `http://192.168.1.100:8000/mattermost/translate`
-5. **Save** 클릭
+   - **Channel**: 번역할 채널 선택
+   - **Trigger Words**: 비워두기 (모든 메시지 번역)
+   - **Callback URL**: `http://your-server-ip:8000/mattermost/translate`
+4. **Save** 클릭
 
-**중요 참고사항:**
-- Outgoing Webhook의 Callback URL은 외부에서 접근 가능한 IP 주소여야 합니다
-- 로컬 테스트 시에는 같은 네트워크의 서버 IP를 사용하거나 ngrok 등의 터널링 서비스 사용
-- Production 환경에서는 도메인과 HTTPS 사용 권장
-
-### 3. Ngrok을 사용한 로컬 테스트 (선택사항)
-
-로컬 개발 환경에서 외부 접근이 필요한 경우:
-
-```bash
-# ngrok 설치 후
-ngrok http 8000
-```
-
-ngrok이 제공하는 HTTPS URL을 Outgoing Webhook의 Callback URL로 사용:
-```
-https://abc123.ngrok.io/mattermost/translate
-```
+**참고:**
+- Callback URL은 Mattermost에서 접근 가능한 IP여야 합니다
+- 로컬 테스트: ngrok 사용 (`ngrok http 8000`)
+- Production: 도메인 + HTTPS 권장
 
 ## 사용 방법
 
@@ -245,25 +246,13 @@ https://abc123.ngrok.io/mattermost/translate
 Hello! Today's meeting starts at 3 PM.
 ```
 
-**입력 (영어):**
-```
-Please review the pull request when you have time.
-```
-
-**출력 (한국어):**
-```
-시간이 되실 때 풀 리퀘스트를 검토해주세요.
-```
-
 ## 환경 변수 상세 설명
 
 | 변수명 | 필수 | 기본값 | 설명 |
 |--------|------|--------|------|
-| `OPENAI_API_KEY` | 선택* | - | OpenAI API 키 |
-| `ANTHROPIC_API_KEY` | 선택* | - | Anthropic API 키 |
-| `LITELLM_API_BASE` | 선택* | - | LiteLLM Proxy 서버 URL |
-| `LITELLM_API_KEY` | 아니오 | - | LiteLLM Proxy API 키 |
-| `AI_MODEL` | 아니오 | `gpt-4o-mini` | 사용할 AI 모델 |
+| `LITELLM_API_BASE` | **필수** | `http://localhost:4000` | LiteLLM Proxy 서버 URL |
+| `LITELLM_API_KEY` | **필수** | `dummy-key` | LiteLLM Proxy API 키 |
+| `AI_MODEL` | 아니오 | `translator-local` | LiteLLM Proxy에 설정된 모델명 |
 | `AI_TEMPERATURE` | 아니오 | `0.3` | AI 생성 온도 (0.0-2.0) |
 | `AI_MAX_TOKENS` | 아니오 | `2000` | 최대 토큰 수 |
 | `AI_TIMEOUT` | 아니오 | `30` | AI API 타임아웃 (초) |
@@ -275,50 +264,78 @@ Please review the pull request when you have time.
 | `SERVER_PORT` | 아니오 | `8000` | 서버 포트 |
 | `LOG_LEVEL` | 아니오 | `INFO` | 로그 레벨 |
 
-**\* API 키는 OpenAI, Anthropic, 또는 LiteLLM Proxy 중 하나 이상 필수**
+## LiteLLM Proxy 설정 예시
 
-## 지원 AI 모델
+### OpenAI GPT 모델 사용
 
-### OpenAI Models (직접 API 사용 시)
-- `gpt-4o` - 최신 GPT-4 Optimized
-- `gpt-4o-mini` - 경제적인 GPT-4 (권장)
-- `gpt-4-turbo` - GPT-4 Turbo
-- `gpt-3.5-turbo` - GPT-3.5
+```yaml
+# config.yaml
+model_list:
+  - model_name: translator-local
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
 
-### Anthropic Claude Models (직접 API 사용 시)
-- `claude-3-5-sonnet-20241022` - Claude 3.5 Sonnet (최신, 권장)
-- `claude-3-opus-20240229` - Claude 3 Opus (최고 성능)
-- `claude-3-sonnet-20240229` - Claude 3 Sonnet
-- `claude-3-haiku-20240307` - Claude 3 Haiku (빠름)
+general_settings:
+  master_key: dummy-key
+```
 
-### LiteLLM Proxy 사용 시
-LiteLLM Proxy를 사용하는 경우, 프록시 서버에 설정된 모델명을 그대로 사용합니다.
+### Anthropic Claude 모델 사용
 
-**LiteLLM Proxy란?**
-- 여러 LLM 제공자를 통합 관리하는 프록시 서버
-- 로드 밸런싱, 캐싱, 비용 추적 등의 기능 제공
-- 자체 호스팅 가능
+```yaml
+# config.yaml
+model_list:
+  - model_name: translator-local
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
 
-**설정 예시:**
+general_settings:
+  master_key: dummy-key
+```
+
+### Ollama 로컬 LLM 사용
+
+```yaml
+# config.yaml
+model_list:
+  - model_name: translator-local
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://localhost:11434
+
+general_settings:
+  master_key: dummy-key
+```
+
+### 여러 모델 동시 지원
+
+```yaml
+# config.yaml
+model_list:
+  - model_name: translator-gpt
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: translator-claude
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: translator-local
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://localhost:11434
+
+general_settings:
+  master_key: dummy-key
+```
+
+번역 서버 `.env`에서 원하는 모델 선택:
 ```env
-LITELLM_API_BASE=http://localhost:4000
-LITELLM_API_KEY=your-proxy-key
-AI_MODEL=gpt-4o-mini  # 프록시에 설정된 모델명
+AI_MODEL=translator-gpt  # 또는 translator-claude, translator-local
 ```
-
-**LiteLLM Proxy 시작하기:**
-```bash
-# LiteLLM 설치
-pip install litellm[proxy]
-
-# 프록시 서버 시작
-litellm --model gpt-4o-mini --port 4000
-
-# 또는 config.yaml 사용
-litellm --config config.yaml
-```
-
-자세한 내용은 [LiteLLM 공식 문서](https://docs.litellm.ai/docs/proxy/quick_start)를 참고하세요.
 
 ## 문제 해결
 
@@ -329,32 +346,84 @@ litellm --config config.yaml
    docker-compose logs -f
    ```
 
-2. **Health 체크:**
+2. **LiteLLM Proxy 확인:**
+   ```bash
+   curl http://localhost:4000/health
+   ```
+
+3. **번역 서버 Health 체크:**
    ```bash
    curl http://localhost:8000/health
    ```
 
-3. **환경 변수 확인:**
-   - API 키가 올바른지 확인
-   - Webhook URL이 정확한지 확인
+### LiteLLM Proxy 연결 오류
 
-### Mattermost에서 메시지를 받지 못함
+- `LITELLM_API_BASE`가 정확한지 확인
+- LiteLLM Proxy가 실행 중인지 확인
+- 포트 번호가 일치하는지 확인 (기본: 4000)
 
-1. Outgoing Webhook의 Callback URL이 올바른지 확인
-2. 서버가 Mattermost에서 접근 가능한지 확인
-3. 방화벽 설정 확인
+### Mattermost Webhook 오류
+
+- Incoming Webhook URL이 정확한지 확인
+- Outgoing Webhook Callback URL이 접근 가능한지 확인
+- 방화벽 설정 확인
 
 ### 무한 루프 발생
 
 - `IGNORED_USERNAMES`에 `ai-translator-bot`이 포함되어 있는지 확인
-- Bot이 자신의 메시지를 다시 번역하지 않도록 설정되어 있어야 함
+- Bot 자신의 메시지를 무시하도록 설정
 
-## 보안 고려사항
+## Docker Compose로 전체 스택 실행
 
-1. **API 키 보호**: `.env` 파일을 Git에 커밋하지 마세요
-2. **HTTPS 사용**: Production에서는 HTTPS 사용 권장
-3. **방화벽**: 필요한 포트만 개방
-4. **인증**: Mattermost Token 검증 추가 고려
+LiteLLM Proxy와 번역 서버를 함께 실행:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: ["--model", "gpt-4o-mini", "--port", "4000"]
+    networks:
+      - translator-network
+
+  mattermost-translator:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - LITELLM_API_BASE=http://litellm-proxy:4000
+    depends_on:
+      - litellm-proxy
+    networks:
+      - translator-network
+
+networks:
+  translator-network:
+    driver: bridge
+```
+
+```bash
+# 전체 스택 실행
+export OPENAI_API_KEY=sk-your-key
+docker-compose up -d
+```
+
+## 기술 스택
+
+- **FastAPI**: 고성능 비동기 웹 프레임워크
+- **OpenAI SDK v1**: LiteLLM Proxy 연동
+- **LiteLLM**: 통합 LLM 프록시 서버
+- **Pydantic**: 데이터 검증 및 설정 관리
+- **HTTPX**: 비동기 HTTP 클라이언트
+- **Docker**: 컨테이너화 및 배포
 
 ## 라이센스
 
@@ -364,6 +433,8 @@ MIT License
 
 이슈 및 Pull Request 환영합니다!
 
-## 지원
+## 참고 자료
 
-문제가 발생하면 GitHub Issues에 등록해주세요.
+- [LiteLLM 공식 문서](https://docs.litellm.ai/)
+- [Mattermost Webhooks](https://docs.mattermost.com/developer/webhooks.html)
+- [OpenAI SDK Python](https://github.com/openai/openai-python)

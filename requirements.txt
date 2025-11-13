@@ -10,14 +10,8 @@ pydantic-settings==2.1.0
 # HTTP client
 httpx==0.26.0
 
-# AI/LLM integration
-litellm==1.52.13
-
-# OpenAI (optional, used via litellm)
+# OpenAI SDK (used to connect to LiteLLM Proxy)
 openai==1.54.4
-
-# Anthropic Claude (optional, used via litellm)
-anthropic==0.39.0
 
 # Logging and utilities
 python-dotenv==1.0.0

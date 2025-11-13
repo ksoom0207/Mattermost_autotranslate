@@ -1,55 +1,38 @@
 """
-AI Translation Client using LiteLLM
-Supports OpenAI, Anthropic Claude, and other LLM providers
+AI Translation Client using OpenAI SDK v1 with LiteLLM Proxy
+Connects to local LiteLLM proxy server with OpenAI-compatible API
 """
 import logging
 from typing import Optional
-import litellm
-from litellm import completion
+from openai import OpenAI, AsyncOpenAI
 
 from app.config import settings
 from app.schemas import TranslationResponse
 
 logger = logging.getLogger(__name__)
 
-# Configure litellm settings
-litellm.drop_params = True  # Drop unsupported params for different providers
-litellm.set_verbose = False  # Set to True for debugging
-
 
 class AITranslationClient:
-    """AI-powered translation client using LiteLLM"""
+    """AI-powered translation client using OpenAI SDK with LiteLLM Proxy"""
 
     def __init__(self):
-        """Initialize AI client with configured settings"""
+        """Initialize AI client with LiteLLM Proxy configuration"""
         self.model = settings.AI_MODEL
         self.temperature = settings.AI_TEMPERATURE
         self.max_tokens = settings.AI_MAX_TOKENS
         self.timeout = settings.AI_TIMEOUT
 
-        # Configure LiteLLM API Base (for custom proxy server)
-        if settings.LITELLM_API_BASE:
-            litellm.api_base = settings.LITELLM_API_BASE
-            logger.info(f"Using LiteLLM proxy at: {settings.LITELLM_API_BASE}")
+        # Initialize OpenAI client pointing to LiteLLM Proxy
+        self.client = AsyncOpenAI(
+            api_key=settings.LITELLM_API_KEY,
+            base_url=settings.LITELLM_API_BASE,
+            timeout=self.timeout
+        )
 
-            # Set custom API key for LiteLLM proxy if provided
-            if settings.LITELLM_API_KEY:
-                # For custom proxy, use the appropriate key based on model prefix
-                if self.model.startswith("openai/") or self.model.startswith("gpt"):
-                    litellm.openai_key = settings.LITELLM_API_KEY
-                elif self.model.startswith("anthropic/") or self.model.startswith("claude"):
-                    litellm.anthropic_key = settings.LITELLM_API_KEY
-                else:
-                    # Generic API key for custom models
-                    litellm.api_key = settings.LITELLM_API_KEY
-        else:
-            # Set API keys for direct provider access
-            if settings.OPENAI_API_KEY:
-                litellm.openai_key = settings.OPENAI_API_KEY
-            if settings.ANTHROPIC_API_KEY:
-                litellm.anthropic_key = settings.ANTHROPIC_API_KEY
-
-        logger.info(f"AI Translation Client initialized with model: {self.model}")
+        logger.info(f"AI Translation Client initialized")
+        logger.info(f"  Base URL: {settings.LITELLM_API_BASE}")
+        logger.info(f"  Model: {self.model}")
+        logger.info(f"  Temperature: {self.temperature}")
 
     def _build_translation_prompt(self, text: str) -> str:
         """
@@ -81,7 +64,7 @@ Translated Message:"""
 
     async def translate(self, text: str) -> TranslationResponse:
         """
-        Translate text using AI model
+        Translate text using LiteLLM Proxy via OpenAI SDK
 
         Args:
             text: Text to translate
@@ -98,8 +81,8 @@ Translated Message:"""
             # Build prompt
             prompt = self._build_translation_prompt(text)
 
-            # Call AI model via litellm
-            response = await litellm.acompletion(
+            # Call LiteLLM Proxy using OpenAI SDK
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {
@@ -109,7 +92,6 @@ Translated Message:"""
                 ],
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
-                timeout=self.timeout,
             )
 
             # Extract translated text
@@ -125,16 +107,8 @@ Translated Message:"""
                 model_used=self.model
             )
 
-        except litellm.Timeout as e:
-            logger.error(f"Translation timeout: {str(e)}")
-            raise Exception(f"Translation timeout after {self.timeout}s")
-
-        except litellm.APIError as e:
-            logger.error(f"API error during translation: {str(e)}")
-            raise Exception(f"API error: {str(e)}")
-
         except Exception as e:
-            logger.error(f"Unexpected error during translation: {str(e)}")
+            logger.error(f"Translation error: {str(e)}", exc_info=True)
             raise Exception(f"Translation failed: {str(e)}")
 
     def validate_configuration(self) -> bool:
