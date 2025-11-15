@@ -364,7 +364,33 @@ curl -X POST https://your-mattermost.com/hooks/your-webhook-id \
 
 Mattermost 채널에 "테스트 메시지"가 나타나야 합니다.
 
-**3. Outgoing Webhook이 번역 서버에 안 닿음**
+**3. "405 Method Not Allowed" 에러**
+
+로그에서 이런 에러가 보이는 경우:
+```
+INFO: 10.212.134.200:56688 - "GET /mattermost/translate HTTP/1.1" 405 Method Not Allowed
+```
+
+**원인:**
+- Mattermost Outgoing Webhook이 **POST**가 아닌 **GET**으로 요청을 보내고 있습니다
+- 번역 엔드포인트는 POST만 허용합니다
+
+**해결 방법:**
+1. Mattermost Outgoing Webhook 설정 확인:
+   - **Content Type**이 `application/x-www-form-urlencoded`인지 확인
+   - **Callback URLs**가 정확한지 확인
+2. 브라우저에서 직접 접근하지 마세요
+   - `http://server:8000/mattermost/translate`를 브라우저로 열면 GET 요청이 되어 405 에러 발생
+3. Outgoing Webhook을 다시 생성해보세요
+
+**정상 작동 시 로그:**
+```
+INFO - Received webhook from user 'testuser' in channel 'general': 안녕하세요...
+INFO - Starting translation for text: 안녕하세요...
+INFO - Translation completed: Hello...
+```
+
+**4. Outgoing Webhook이 번역 서버에 안 닿음**
 
 ```bash
 # 번역 서버 접근 테스트 (Mattermost 서버에서 실행)
@@ -374,6 +400,18 @@ curl http://your-translator-server:8000/health
 - 방화벽 확인
 - Callback URL이 정확한지 확인
 - ngrok 사용 (로컬 테스트)
+
+**5. "403 Invalid token" 에러**
+
+Token을 설정한 경우:
+```bash
+# .env에 올바른 Token 확인
+grep MATTERMOST_OUTGOING_TOKEN .env
+
+# Mattermost Outgoing Webhook에서 Token 다시 확인
+```
+
+Token이 일치하지 않으면 403 에러가 발생합니다.
 
 ### ✅ 테스트 체크리스트
 
@@ -404,14 +442,31 @@ curl http://your-translator-server:8000/health
 1. Mattermost → **Main Menu** → **Integrations** → **Outgoing Webhooks**
 2. **Add Outgoing Webhook** 클릭
 3. 설정:
-   - **Content Type**: `application/x-www-form-urlencoded`
+   - **Content Type**: `application/x-www-form-urlencoded` ⚠️ **중요!**
    - **Channel**: 번역할 채널 선택
    - **Trigger Words**: 비워두기 (모든 메시지 번역)
-   - **Callback URL**: `http://your-server-ip:8000/mattermost/translate`
+     - 또는 특정 단어로 트리거 (예: `translate`, `번역`)
+   - **Callback URLs**: `http://your-server-ip:8000/mattermost/translate`
+     - 예: `http://192.168.1.100:8000/mattermost/translate`
 4. **Save** 클릭
+5. ⭐ **Token 복사** - 생성 후 나타나는 **Token** 값을 복사해두세요!
 
-**참고:**
-- Callback URL은 Mattermost에서 접근 가능한 IP여야 합니다
+**Token 설정 (보안 강화 - 선택사항):**
+
+Token을 사용하면 요청이 진짜 Mattermost에서 온 것인지 검증합니다.
+
+```bash
+# .env 파일에 추가
+MATTERMOST_OUTGOING_TOKEN=abc123xyz456  # 복사한 Token 값
+```
+
+Token을 설정하지 않으면 누구나 번역 엔드포인트에 접근 가능합니다. (내부 네트워크에서만 사용하는 경우 괜찮음)
+
+**⚠️ 중요 참고사항:**
+
+- **Content Type 반드시 확인**: `application/x-www-form-urlencoded`여야 합니다
+  - `application/json`으로 설정하면 작동하지 않습니다!
+- Callback URL은 Mattermost에서 접근 가능한 IP/도메인이어야 합니다
 - 로컬 테스트: ngrok 사용 (`ngrok http 8000`)
 - Production: 도메인 + HTTPS 권장
 
@@ -456,6 +511,7 @@ Hello! Today's meeting starts at 3 PM.
 | `MATTERMOST_INCOMING_WEBHOOK_URL` | **필수** | - | Mattermost Incoming Webhook URL |
 | `MATTERMOST_BOT_USERNAME` | 아니오 | `ai-translator-bot` | Bot 표시 이름 |
 | `MATTERMOST_BOT_ICON_URL` | 아니오 | - | Bot 아이콘 URL |
+| `MATTERMOST_OUTGOING_TOKEN` | 아니오 | - | Outgoing Webhook Token (보안 검증용) |
 | `IGNORED_USERNAMES` | 아니오 | `ai-translator-bot,...` | 무시할 사용자명 (쉼표 구분) |
 | `SERVER_HOST` | 아니오 | `0.0.0.0` | 서버 호스트 |
 | `SERVER_PORT` | 아니오 | `8000` | 서버 포트 |

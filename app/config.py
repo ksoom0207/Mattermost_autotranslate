@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     MATTERMOST_BOT_USERNAME: str = "ai-translator-bot"
     MATTERMOST_BOT_ICON_URL: Optional[str] = None
 
+    # Mattermost Security (Optional - for token verification)
+    MATTERMOST_OUTGOING_TOKEN: Optional[str] = None  # Token from Outgoing Webhook for verification
+
     # Ignored Users (bot names that should not trigger translation)
     IGNORED_USERNAMES: str = "ai-translator-bot,mattermost-bot,github,gitlab"
 

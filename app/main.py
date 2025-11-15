@@ -101,6 +101,16 @@ async def translate_webhook(
         200 OK response
     """
     try:
+        # Token verification (security check)
+        if settings.MATTERMOST_OUTGOING_TOKEN:
+            if not token or token != settings.MATTERMOST_OUTGOING_TOKEN:
+                logger.warning(f"Invalid token received from {user_name}: {token}")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Invalid or missing Outgoing Webhook token"
+                )
+            logger.debug("Token verified successfully")
+
         logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
 
         # Validate and parse webhook data
