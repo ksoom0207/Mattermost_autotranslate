@@ -19,6 +19,9 @@ class MattermostOutgoingWebhook(BaseModel):
     text: str
     trigger_word: Optional[str] = None
     file_ids: Optional[str] = None
+    # Thread support fields
+    root_id: Optional[str] = None  # The root post ID if this is a reply in a thread
+    parent_id: Optional[str] = None  # The parent post ID (may be same as root_id)
 
 
 class MattermostIncomingWebhook(BaseModel):
@@ -27,6 +30,7 @@ class MattermostIncomingWebhook(BaseModel):
     icon_url: Optional[str] = Field(default=None, description="Bot icon URL")
     text: str = Field(..., description="Translated message text")
     channel: Optional[str] = Field(default=None, description="Optional channel override")
+    root_id: Optional[str] = Field(default=None, description="Root post ID to reply in thread")
 
 
 class TranslationRequest(BaseModel):

@@ -110,7 +110,9 @@ async def translate_webhook(
     post_id: str = Form(...),
     text: str = Form(...),
     trigger_word: str = Form(None),
-    file_ids: str = Form(None)
+    file_ids: str = Form(None),
+    root_id: str = Form(None),
+    parent_id: str = Form(None)
 ):
     """
     Handle Mattermost Outgoing Webhook for translation
@@ -141,7 +143,11 @@ async def translate_webhook(
                 )
             logger.debug("Token verified successfully")
 
-        logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
+        # Log incoming request
+        if root_id:
+            logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}' (thread reply, root_id={root_id}): {text[:50]}...")
+        else:
+            logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
 
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
@@ -156,7 +162,9 @@ async def translate_webhook(
             post_id=post_id,
             text=text,
             trigger_word=trigger_word,
-            file_ids=file_ids
+            file_ids=file_ids,
+            root_id=root_id,
+            parent_id=parent_id
         )
 
         # Check if user should be ignored (e.g., bots)
@@ -196,13 +204,19 @@ async def translate_webhook(
         logger.info(f"  Model:      {translation_result.model_used}")
 
         # Post translated message back to Mattermost
+        # Use root_id if present to reply in the same thread
+        # If root_id is None, the reply will be a new message (not in a thread)
         await mattermost_client.post_message(
             text=translated_message,
             username=settings.MATTERMOST_BOT_USERNAME,
-            icon_url=settings.MATTERMOST_BOT_ICON_URL
+            icon_url=settings.MATTERMOST_BOT_ICON_URL,
+            root_id=webhook_data.root_id
         )
 
-        logger.info("Message posted successfully to Mattermost")
+        if webhook_data.root_id:
+            logger.info(f"Message posted successfully to Mattermost thread (root_id={webhook_data.root_id})")
+        else:
+            logger.info("Message posted successfully to Mattermost")
 
         return JSONResponse(
             status_code=200,

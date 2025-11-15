@@ -29,7 +29,8 @@ class MattermostClient:
         text: str,
         username: Optional[str] = None,
         icon_url: Optional[str] = None,
-        channel: Optional[str] = None
+        channel: Optional[str] = None,
+        root_id: Optional[str] = None
     ) -> bool:
         """
         Post a message to Mattermost via Incoming Webhook
@@ -39,6 +40,7 @@ class MattermostClient:
             username: Override bot username (optional)
             icon_url: Override bot icon URL (optional)
             channel: Override channel (optional)
+            root_id: Root post ID to reply in thread (optional)
 
         Returns:
             True if message was posted successfully
@@ -52,10 +54,14 @@ class MattermostClient:
                 username=username or self.bot_username,
                 icon_url=icon_url or self.bot_icon_url,
                 text=text,
-                channel=channel
+                channel=channel,
+                root_id=root_id
             )
 
-            logger.info(f"Posting message to Mattermost: {text[:50]}...")
+            if root_id:
+                logger.info(f"Posting message to Mattermost as thread reply (root_id={root_id}): {text[:50]}...")
+            else:
+                logger.info(f"Posting message to Mattermost: {text[:50]}...")
 
             # Send POST request to webhook
             async with httpx.AsyncClient(timeout=self.timeout) as client:
