@@ -64,11 +64,50 @@ Mattermost_autotranslate/
 - **LiteLLM Proxy 서버** (로컬 또는 원격)
 - Mattermost Server 접근 권한
 
-## 빠른 시작
+## 🚀 시나리오별 설치 가이드
 
-### 1. LiteLLM Proxy 서버 실행
+사용 환경에 따라 적합한 시나리오를 선택하세요.
 
-먼저 LiteLLM Proxy 서버를 실행해야 합니다.
+### 📌 시나리오 1: 외부 LiteLLM Proxy 사용 (가장 간단!)
+
+**이미 다른 서버에 LiteLLM Proxy가 실행 중인 경우**
+
+```bash
+# 1. 프로젝트 클론
+git clone <repository-url>
+cd Mattermost_autotranslate
+
+# 2. .env 파일 생성 및 수정
+cp .env.example .env
+nano .env
+```
+
+**.env 설정:**
+```env
+# 외부 LiteLLM Proxy 정보 (관리자에게 받은 정보)
+LITELLM_API_BASE=http://your-litellm-server:4000
+LITELLM_API_KEY=your-api-key-here
+AI_MODEL=translator-local
+
+# Mattermost Webhook URL
+MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
+```
+
+```bash
+# 3. 번역 서버 실행
+docker-compose up -d
+
+# 4. 로그 확인
+docker-compose logs -f
+```
+
+**끝!** 추가로 설치할 것 없습니다.
+
+---
+
+### 📌 시나리오 2: 로컬에서 LiteLLM Proxy 직접 실행
+
+**LiteLLM Proxy를 직접 실행하고 싶은 경우**
 
 **옵션 A: 간단한 로컬 실행 (테스트용)**
 
@@ -119,72 +158,131 @@ ollama serve
 litellm --model ollama/llama3.2 --port 4000
 ```
 
-### 2. 프로젝트 설정
+그 다음 번역 서버를 실행하세요 (시나리오 1과 동일한 방법).
 
-```bash
-# 프로젝트 클론
-git clone <repository-url>
-cd Mattermost_autotranslate
+---
 
-# .env 파일 생성
-cp .env.example .env
+### 📌 시나리오 3: Docker Compose로 전체 스택 실행
 
-# .env 파일 편집
-nano .env
+**LiteLLM Proxy와 번역 서버를 한 번에 실행**
+
+`docker-compose.yml` 생성:
+
+```yaml
+version: '3.8'
+
+services:
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: ["--model", "gpt-4o-mini", "--port", "4000"]
+    networks:
+      - translator-network
+
+  mattermost-translator:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - LITELLM_API_BASE=http://litellm-proxy:4000
+      - LITELLM_API_KEY=dummy-key
+      - AI_MODEL=gpt-4o-mini
+    depends_on:
+      - litellm-proxy
+    networks:
+      - translator-network
+
+networks:
+  translator-network:
+    driver: bridge
 ```
 
-**필수 설정 (.env):**
-
-```env
-# LiteLLM Proxy 설정
-LITELLM_API_BASE=http://localhost:4000
-LITELLM_API_KEY=dummy-key
-
-# 모델명 (LiteLLM Proxy에 설정한 이름)
-AI_MODEL=translator-local
-
-# Mattermost Incoming Webhook URL (필수!)
-MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx
-```
-
-### 3. 번역 서버 실행
-
-**Docker로 실행 (권장):**
-
+실행:
 ```bash
-# Docker Compose로 빌드 및 실행
+# OpenAI API 키 설정
+export OPENAI_API_KEY=sk-your-key
+
+# .env 파일에 Mattermost Webhook URL 설정
+echo "MATTERMOST_INCOMING_WEBHOOK_URL=https://your-mattermost.com/hooks/xxx" > .env
+
+# 전체 스택 실행
 docker-compose up -d
 
 # 로그 확인
 docker-compose logs -f
-
-# 중지
-docker-compose down
 ```
 
-**로컬에서 실행:**
+---
+
+## 🧪 연동 및 테스트 가이드
+
+서비스를 실행했다면, 단계별로 연동을 테스트하세요.
+
+### Step 1: LiteLLM Proxy 연결 확인
+
+번역 서버가 LiteLLM Proxy에 접근할 수 있는지 확인합니다.
 
 ```bash
-# 가상환경 생성
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# LiteLLM Proxy Health Check
+curl http://your-litellm-server:4000/health
 
-# 의존성 설치
-pip install -r requirements.txt
-
-# 서버 실행
-python -m app.main
-# 또는
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# 또는 로컬인 경우
+curl http://localhost:4000/health
 ```
 
-### 4. Health Check
+**예상 응답:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+❌ **연결 실패 시:**
+- `LITELLM_API_BASE` URL이 정확한지 확인
+- 방화벽/보안그룹에서 포트 4000이 열려있는지 확인
+- LiteLLM Proxy 서버가 실행 중인지 확인
+
+### Step 2: LiteLLM Proxy 모델 확인
+
+사용 가능한 모델 목록을 확인합니다.
+
+```bash
+# 모델 목록 조회
+curl http://your-litellm-server:4000/models
+
+# 또는 인증이 필요한 경우
+curl -H "Authorization: Bearer your-api-key" \
+  http://your-litellm-server:4000/models
+```
+
+**예상 응답:**
+```json
+{
+  "data": [
+    {
+      "id": "translator-local",
+      "object": "model",
+      "created": 1234567890,
+      "owned_by": "litellm"
+    }
+  ]
+}
+```
+
+📝 `.env`의 `AI_MODEL` 값이 이 목록에 있는지 확인하세요!
+
+### Step 3: 번역 서버 Health Check
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-응답:
+**예상 응답:**
 ```json
 {
   "status": "healthy",
@@ -192,6 +290,105 @@ curl http://localhost:8000/health
   "ai_configured": true
 }
 ```
+
+✅ `ai_configured: true` → LiteLLM 설정 완료!
+❌ `ai_configured: false` → `.env` 파일 확인 필요
+
+### Step 4: 번역 API 직접 테스트
+
+Mattermost 연동 전에 번역 기능만 먼저 테스트합니다.
+
+```bash
+# 번역 엔드포인트 테스트
+curl -X POST http://localhost:8000/mattermost/translate \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "team_id=test123" \
+  -d "channel_id=test456" \
+  -d "user_id=user789" \
+  -d "user_name=testuser" \
+  -d "post_id=post123" \
+  -d "text=안녕하세요"
+```
+
+**예상 응답:**
+```json
+{
+  "status": "success",
+  "translated": true,
+  "model": "translator-local"
+}
+```
+
+**로그 확인:**
+```bash
+docker-compose logs -f mattermost-translator
+```
+
+**예상 로그:**
+```
+INFO - Starting translation for text: 안녕하세요...
+INFO - Translation completed: Hello...
+INFO - Message posted successfully to Mattermost
+```
+
+### Step 5: 실제 번역 결과 확인
+
+Mattermost 채널에 번역된 메시지가 나타나는지 확인하세요.
+
+```
+[ai-translator-bot] Hello
+```
+
+### 🐛 트러블슈팅
+
+**1. "Translation failed" 에러**
+
+로그 확인:
+```bash
+docker-compose logs mattermost-translator | grep ERROR
+```
+
+일반적인 원인:
+- LiteLLM Proxy 연결 실패 → `LITELLM_API_BASE` 확인
+- 모델명 오류 → `AI_MODEL` 값 확인
+- API 키 인증 실패 → `LITELLM_API_KEY` 확인
+
+**2. Mattermost에 메시지가 안 올라옴**
+
+```bash
+# Incoming Webhook 테스트
+curl -X POST https://your-mattermost.com/hooks/your-webhook-id \
+  -H "Content-Type: application/json" \
+  -d '{"text":"테스트 메시지"}'
+```
+
+Mattermost 채널에 "테스트 메시지"가 나타나야 합니다.
+
+**3. Outgoing Webhook이 번역 서버에 안 닿음**
+
+```bash
+# 번역 서버 접근 테스트 (Mattermost 서버에서 실행)
+curl http://your-translator-server:8000/health
+```
+
+- 방화벽 확인
+- Callback URL이 정확한지 확인
+- ngrok 사용 (로컬 테스트)
+
+### ✅ 테스트 체크리스트
+
+완료된 항목을 체크하세요:
+
+- [ ] LiteLLM Proxy Health Check 성공
+- [ ] LiteLLM Proxy 모델 목록 조회 성공
+- [ ] 번역 서버 Health Check 성공 (`ai_configured: true`)
+- [ ] curl로 번역 API 직접 테스트 성공
+- [ ] 로그에서 "Translation completed" 확인
+- [ ] Mattermost Incoming Webhook 테스트 성공
+- [ ] Mattermost Outgoing Webhook 설정 완료
+- [ ] 실제 Mattermost 채널에서 번역 테스트 성공
+
+모든 항목이 체크되면 정상 작동입니다! 🎉
 
 ## Mattermost 설정
 
