@@ -74,6 +74,29 @@ async def health_check():
     )
 
 
+def fix_encoding(text: str) -> str:
+    """
+    Fix UTF-8 encoding issue from Mattermost form data
+
+    Mattermost sometimes sends UTF-8 data that FastAPI interprets as Latin-1
+
+    Args:
+        text: Possibly mis-encoded text
+
+    Returns:
+        Properly decoded UTF-8 text
+    """
+    if not text:
+        return text
+
+    try:
+        # Try to re-encode as Latin-1 and decode as UTF-8
+        return text.encode('latin-1').decode('utf-8')
+    except (UnicodeDecodeError, UnicodeEncodeError, AttributeError):
+        # If re-encoding fails, return original text
+        return text
+
+
 @app.post("/mattermost/translate")
 async def translate_webhook(
     token: str = Form(None),
@@ -101,6 +124,13 @@ async def translate_webhook(
         200 OK response
     """
     try:
+        # Fix UTF-8 encoding issues from Mattermost form data
+        text = fix_encoding(text)
+        channel_name = fix_encoding(channel_name) if channel_name else None
+        user_name = fix_encoding(user_name) if user_name else user_name
+        team_domain = fix_encoding(team_domain) if team_domain else None
+        trigger_word = fix_encoding(trigger_word) if trigger_word else None
+
         # Token verification (security check)
         if settings.MATTERMOST_OUTGOING_TOKEN:
             if not token or token != settings.MATTERMOST_OUTGOING_TOKEN:

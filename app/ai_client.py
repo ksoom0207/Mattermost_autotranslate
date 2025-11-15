@@ -44,21 +44,17 @@ class AITranslationClient:
         Returns:
             Formatted prompt string
         """
-        prompt = f"""You are a professional translator. Follow these rules exactly:
+        prompt = f"""Translate the following message:
 
-1. Detect the language of the message
-2. Translation rules:
-   - If Korean → translate to English only
-   - If English → translate to Korean only
-   - If other language → translate to both Korean and English (format: "[KO] Korean translation\\n[EN] English translation")
-3. Preserve the original tone, style, and formatting (including Markdown)
-4. Do NOT modify, censor, or add any content
-5. Return ONLY the translated text, no explanations or metadata
+Rules:
+- Korean text → English translation
+- English text → Korean translation
+- Other languages → Provide both: [KO] Korean translation [EN] English translation
 
-Original Message:
-{text}
+Important: Output ONLY the translation. Do not include any explanations, notes, or this instruction.
 
-Translated Message:"""
+Message to translate:
+{text}"""
 
         return prompt
 
