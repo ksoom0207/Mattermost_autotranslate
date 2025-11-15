@@ -147,6 +147,20 @@ async def translate_webhook(
         logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
         logger.info(f"  post_id={post_id}, root_id={root_id}, parent_id={parent_id}")
 
+        # Fetch post data from Mattermost API to get accurate root_id for thread support
+        # Outgoing Webhooks don't include root_id in their payload, so we query the API
+        if not root_id:
+            post_data = await mattermost_client.get_post(post_id)
+            if post_data:
+                # If this post is a reply in a thread, use its root_id
+                # If root_id is empty string, this is a new message (not in a thread)
+                api_root_id = post_data.get('root_id', '')
+                if api_root_id:
+                    root_id = api_root_id
+                    logger.info(f"  Retrieved root_id from API: {root_id}")
+                else:
+                    logger.info(f"  Post is not in a thread (API returned empty root_id)")
+
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
             token=token,
