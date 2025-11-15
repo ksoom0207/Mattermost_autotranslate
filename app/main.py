@@ -145,6 +145,7 @@ async def translate_webhook(
 
         # Log incoming request
         logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
+        logger.info(f"  post_id={post_id}, root_id={root_id}, parent_id={parent_id}")
 
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
@@ -200,20 +201,37 @@ async def translate_webhook(
         logger.info(f"  Translated: {translation_result.translated_text}")
         logger.info(f"  Model:      {translation_result.model_used}")
 
-        # Return the translation as HTTP response with response_type: "comment"
-        # This makes Mattermost post the translation as a threaded reply
-        # to the original message, keeping conversations organized
-        logger.info(f"Returning translation as threaded reply to Mattermost")
+        # Decide how to post the translation based on whether it's a thread reply
+        # - If root_id exists (user posted in a thread): use response_type "comment" to reply in that thread
+        # - If root_id is None (new message): use Incoming Webhook to post as a new message
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "response_type": "comment",  # This creates a threaded reply to the original message
-                "username": settings.MATTERMOST_BOT_USERNAME,
-                "icon_url": settings.MATTERMOST_BOT_ICON_URL,
-                "text": translated_message
-            }
-        )
+        if webhook_data.root_id:
+            # User posted in a thread - reply in the same thread using response_type "comment"
+            logger.info(f"Returning translation as threaded reply (root_id={webhook_data.root_id})")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "response_type": "comment",  # Creates a threaded reply to the original message
+                    "username": settings.MATTERMOST_BOT_USERNAME,
+                    "icon_url": settings.MATTERMOST_BOT_ICON_URL,
+                    "text": translated_message
+                }
+            )
+        else:
+            # User posted a new message - post translation as a new message using Incoming Webhook
+            logger.info(f"Posting translation as new message via Incoming Webhook")
+            await mattermost_client.post_message(
+                text=translated_message,
+                username=settings.MATTERMOST_BOT_USERNAME,
+                icon_url=settings.MATTERMOST_BOT_ICON_URL
+            )
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success"
+                }
+            )
 
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
