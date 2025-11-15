@@ -144,10 +144,7 @@ async def translate_webhook(
             logger.debug("Token verified successfully")
 
         # Log incoming request
-        if root_id:
-            logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}' (thread reply, root_id={root_id}): {text[:50]}...")
-        else:
-            logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
+        logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
 
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
@@ -203,27 +200,18 @@ async def translate_webhook(
         logger.info(f"  Translated: {translation_result.translated_text}")
         logger.info(f"  Model:      {translation_result.model_used}")
 
-        # Post translated message back to Mattermost
-        # Use root_id if present to reply in the same thread
-        # If root_id is None, the reply will be a new message (not in a thread)
-        await mattermost_client.post_message(
-            text=translated_message,
-            username=settings.MATTERMOST_BOT_USERNAME,
-            icon_url=settings.MATTERMOST_BOT_ICON_URL,
-            root_id=webhook_data.root_id
-        )
-
-        if webhook_data.root_id:
-            logger.info(f"Message posted successfully to Mattermost thread (root_id={webhook_data.root_id})")
-        else:
-            logger.info("Message posted successfully to Mattermost")
+        # Return the translation as HTTP response with response_type: "comment"
+        # This makes Mattermost post the translation as a threaded reply
+        # to the original message, keeping conversations organized
+        logger.info(f"Returning translation as threaded reply to Mattermost")
 
         return JSONResponse(
             status_code=200,
             content={
-                "status": "success",
-                "translated": True,
-                "model": translation_result.model_used
+                "response_type": "comment",  # This creates a threaded reply to the original message
+                "username": settings.MATTERMOST_BOT_USERNAME,
+                "icon_url": settings.MATTERMOST_BOT_ICON_URL,
+                "text": translated_message
             }
         )
 
