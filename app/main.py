@@ -145,21 +145,6 @@ async def translate_webhook(
 
         # Log incoming request
         logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
-        logger.info(f"  post_id={post_id}, root_id={root_id}, parent_id={parent_id}")
-
-        # Fetch post data from Mattermost API to get accurate root_id for thread support
-        # Outgoing Webhooks don't include root_id in their payload, so we query the API
-        if not root_id:
-            post_data = await mattermost_client.get_post(post_id)
-            if post_data:
-                # If this post is a reply in a thread, use its root_id
-                # If root_id is empty string, this is a new message (not in a thread)
-                api_root_id = post_data.get('root_id', '')
-                if api_root_id:
-                    root_id = api_root_id
-                    logger.info(f"  Retrieved root_id from API: {root_id}")
-                else:
-                    logger.info(f"  Post is not in a thread (API returned empty root_id)")
 
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
@@ -215,37 +200,21 @@ async def translate_webhook(
         logger.info(f"  Translated: {translation_result.translated_text}")
         logger.info(f"  Model:      {translation_result.model_used}")
 
-        # Decide how to post the translation based on whether it's a thread reply
-        # - If root_id exists (user posted in a thread): use response_type "comment" to reply in that thread
-        # - If root_id is None (new message): use Incoming Webhook to post as a new message
+        # Return translation as threaded reply using response_type: "comment"
+        # This creates a thread under the original message automatically
+        # - For new messages: creates a new thread with the translation as first reply
+        # - For thread replies: adds translation to the existing thread
+        logger.info(f"Returning translation as threaded reply")
 
-        if webhook_data.root_id:
-            # User posted in a thread - reply in the same thread using response_type "comment"
-            logger.info(f"Returning translation as threaded reply (root_id={webhook_data.root_id})")
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "response_type": "comment",  # Creates a threaded reply to the original message
-                    "username": settings.MATTERMOST_BOT_USERNAME,
-                    "icon_url": settings.MATTERMOST_BOT_ICON_URL,
-                    "text": translated_message
-                }
-            )
-        else:
-            # User posted a new message - post translation as a new message using Incoming Webhook
-            logger.info(f"Posting translation as new message via Incoming Webhook")
-            await mattermost_client.post_message(
-                text=translated_message,
-                username=settings.MATTERMOST_BOT_USERNAME,
-                icon_url=settings.MATTERMOST_BOT_ICON_URL
-            )
-
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success"
-                }
-            )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "response_type": "comment",  # Always reply as thread to keep conversations organized
+                "username": settings.MATTERMOST_BOT_USERNAME,
+                "icon_url": settings.MATTERMOST_BOT_ICON_URL,
+                "text": translated_message
+            }
+        )
 
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
