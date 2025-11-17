@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     MATTERMOST_BOT_USERNAME: str = "ai-translator-bot"
     MATTERMOST_BOT_ICON_URL: Optional[str] = None
 
+    # Mattermost API Configuration (for thread support)
+    MATTERMOST_API_URL: str = "http://mattermost:8065/api/v4"
+    MATTERMOST_API_TOKEN: Optional[str] = None
+
     # Mattermost Security (Optional - for token verification)
     MATTERMOST_OUTGOING_TOKEN: Optional[str] = None  # Token from Outgoing Webhook for verification
 

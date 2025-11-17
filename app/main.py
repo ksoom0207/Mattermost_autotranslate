@@ -146,6 +146,24 @@ async def translate_webhook(
         # Log incoming request
         logger.info(f"Received webhook from user '{user_name}' in channel '{channel_name}': {text[:50]}...")
 
+        # Fetch post data from Mattermost API to get accurate root_id for thread support
+        # Outgoing Webhooks don't include root_id in their payload, so we query the API
+        post_root_id = None
+        if not root_id:
+            post_data = await mattermost_client.get_post(post_id)
+            if post_data:
+                # If this post is a reply in a thread, use its root_id
+                # If root_id is empty string, this is a new message (not in a thread)
+                api_root_id = post_data.get('root_id', '')
+                if api_root_id:
+                    post_root_id = api_root_id
+                    logger.info(f"  Thread detected - root_id: {post_root_id}")
+                else:
+                    logger.info(f"  New channel message (not in a thread)")
+        else:
+            post_root_id = root_id
+            logger.info(f"  Thread detected from webhook - root_id: {post_root_id}")
+
         # Validate and parse webhook data
         webhook_data = MattermostOutgoingWebhook(
             token=token,
@@ -200,20 +218,31 @@ async def translate_webhook(
         logger.info(f"  Translated: {translation_result.translated_text}")
         logger.info(f"  Model:      {translation_result.model_used}")
 
-        # Return translation as threaded reply using response_type: "comment"
-        # This creates a thread under the original message automatically
-        # - For new messages: creates a new thread with the translation as first reply
-        # - For thread replies: adds translation to the existing thread
-        logger.info(f"Returning translation as threaded reply")
+        # Post translation based on whether original message is in a thread
+        # - New channel message (no root_id): Post as new independent message
+        # - Thread reply (has root_id): Post as reply in the same thread
+
+        if post_root_id:
+            # Message is in a thread - post translation as reply in same thread
+            logger.info(f"Posting translation as thread reply (root_id={post_root_id})")
+            await mattermost_client.post_message(
+                text=translated_message,
+                username=settings.MATTERMOST_BOT_USERNAME,
+                icon_url=settings.MATTERMOST_BOT_ICON_URL,
+                root_id=post_root_id
+            )
+        else:
+            # New channel message - post translation as new independent message
+            logger.info(f"Posting translation as new channel message")
+            await mattermost_client.post_message(
+                text=translated_message,
+                username=settings.MATTERMOST_BOT_USERNAME,
+                icon_url=settings.MATTERMOST_BOT_ICON_URL
+            )
 
         return JSONResponse(
             status_code=200,
-            content={
-                "response_type": "comment",  # Always reply as thread to keep conversations organized
-                "username": settings.MATTERMOST_BOT_USERNAME,
-                "icon_url": settings.MATTERMOST_BOT_ICON_URL,
-                "text": translated_message
-            }
+            content={"status": "success"}
         )
 
     except Exception as e:
